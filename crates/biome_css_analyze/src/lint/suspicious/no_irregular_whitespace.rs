@@ -2,7 +2,7 @@ use biome_analyze::{
     Ast, Rule, RuleDiagnostic, RuleSource, context::RuleContext, declare_lint_rule,
 };
 use biome_console::markup;
-use biome_css_syntax::{AnyCssRule, CssSyntaxNode};
+use biome_css_syntax::{AnyCssRule, CssSyntaxKind, CssSyntaxNode};
 use biome_diagnostics::Severity;
 use biome_rowan::{AstNode, Direction, TextRange};
 use biome_rule_options::no_irregular_whitespace::NoIrregularWhitespaceOptions;
@@ -76,6 +76,13 @@ fn is_irregular_whitespace(c: char) -> bool {
     )
 }
 
+fn is_string_token(kind: CssSyntaxKind) -> bool {
+    matches!(
+        kind,
+        CssSyntaxKind::CSS_STRING_LITERAL | CssSyntaxKind::SCSS_STRING_CONTENT_LITERAL
+    )
+}
+
 fn get_irregular_whitespace(syntax: &CssSyntaxNode) -> Vec<TextRange> {
     if !syntax
         .text_with_trivia()
@@ -87,7 +94,18 @@ fn get_irregular_whitespace(syntax: &CssSyntaxNode) -> Vec<TextRange> {
 
     let mut results = vec![];
     for token in syntax.descendants_tokens(Direction::Next) {
-        if !token.has_leading_comments()
+        if is_string_token(token.kind()) {
+            // Whitespace inside a string is part of its value, so only check the trivia.
+            for trivia in token
+                .leading_trivia()
+                .pieces()
+                .chain(token.trailing_trivia().pieces())
+            {
+                if trivia.is_whitespace() && trivia.text().chars().any(is_irregular_whitespace) {
+                    results.push(trivia.text_range());
+                }
+            }
+        } else if !token.has_leading_comments()
             && !token.has_trailing_comments()
             && token.text().chars().any(is_irregular_whitespace)
         {
