@@ -8,3 +8,10 @@
 	padding: 10px;
 }
 
+.foo::before {
+	content: '　';
+}
+
+.foo::after {
+	content: "a b";
+}
